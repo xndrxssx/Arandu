@@ -1,0 +1,15 @@
+# equivalente ao Vagrantfile, define os containers e suas configurações
+version: '3.8'
+services:
+  web:
+    build: .
+    container_name: arandu
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    volumes:
+      - ./web-folder:/app/web-folder
+    stdin_open: true
+    tty: true
+    
+

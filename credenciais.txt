@@ -1,0 +1,41 @@
+================================================================================
+SABER DIGITAL - SISTEMA DE AGENDAMENTO DE BIBLIOTECA
+Demanda Real: Colégio Estadual de Tempo Integral Paulo José de Oliveira
+================================================================================
+
+INTEGRANTES DO PROJETO:
+- Francisco Sérgio Feitosa Lima Segundo (Líder do Grupo)
+- Andressa Luíza Carvalho de Costa
+- Adhemar Cavalcanti
+- Hanah Silva e Siqueira
+
+--------------------------------------------------------------------------------
+CREDENCIAIS DE ACESSO AO DJANGO ADMIN:
+--------------------------------------------------------------------------------
+URL de Acesso: http://localhost:8000/admin/
+Usuário:      admin
+Senha:        admindsw
+
+--------------------------------------------------------------------------------
+ESTRUTURA DO BANCO DE DADOS (POPULADO COM DADOS FAKE VIA FAKER):
+--------------------------------------------------------------------------------
+O banco de dados SQLite já contém as migrações aplicadas e centenas de registros:
+- Categoria:  12 categorias escolares e acadêmicas
+- Usuario:    120 usuários (alunos e administradores com matrículas e contatos)
+- Livro:      150 obras literárias e científicas (com identificadores UUID e ISBN)
+- Emprestimo: 200 empréstimos gerados com datas, previsões e status (Ativo/Devolvido/Atrasado)
+
+Total de registros no banco: 482 registros.
+
+--------------------------------------------------------------------------------
+COMO EXECUTAR O PROJETO:
+--------------------------------------------------------------------------------
+1. Iniciar o servidor com Docker Compose:
+   docker compose up
+
+2. Acesse o painel administrativo em:
+   http://localhost:8000/admin/
+
+3. (Opcional) Caso deseje rodar novamente o comando de povoamento com dados fake:
+   docker compose exec web python manage.py popular_banco
+================================================================================

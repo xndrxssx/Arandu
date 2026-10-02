@@ -1,0 +1,25 @@
+# Python / Django
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+.pytest_cache/
+
+# Ambientes Virtuais
+venv/
+.venv/
+env/
+
+# Vagrant e VirtualBox
+.vagrant/
+box/
+*.box
+
+# Arquivos de Sistema Operacional e IDEs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Arquivos ZIP temporários de entrega
+*.zip
