@@ -35,8 +35,12 @@ CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1',
     'https://*.run.app',
     'https://*.appspot.com',
+    'https://*.amazonaws.com',
+    'https://*.awsapprunner.com',
     '.run.app',
     '.appspot.com',
+    '.amazonaws.com',
+    '.awsapprunner.com',
 ]
 
 
