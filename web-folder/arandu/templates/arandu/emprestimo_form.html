@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arandu - Saber Digital | Agendamento de Empréstimo</title>
+    <style>
+        :root {
+            --primary: #1e3a8a;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --muted: #64748b;
+            --border: #cbd5e1;
+            --success-bg: #dcfce7;
+            --success-border: #16a34a;
+            --success-text: #14532d;
+            --error-bg: #fee2e2;
+            --error-border: #dc2626;
+            --error-text: #7f1d1d;
+        }
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+        header {
+            background-color: var(--primary);
+            color: #ffffff;
+            padding: 1.25rem 2rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        header p {
+            margin: 0.25rem 0 0;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        main {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.75rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        .card h2 {
+            margin-top: 0;
+            font-size: 1.25rem;
+            color: var(--primary);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.75rem;
+            margin-bottom: 1.25rem;
+        }
+        ul.messages {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 1.5rem 0;
+        }
+        .alert {
+            padding: 0.875rem 1rem;
+            border-radius: 6px;
+            margin-bottom: 0.75rem;
+            font-weight: 500;
+            border-left: 4px solid transparent;
+        }
+        .alert.success {
+            background-color: var(--success-bg);
+            border-color: var(--success-border);
+            color: var(--success-text);
+        }
+        .alert.error, .alert.warning {
+            background-color: var(--error-bg);
+            border-color: var(--error-border);
+            color: var(--error-text);
+        }
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+        .form-control {
+            width: 100%;
+            padding: 0.625rem 0.75rem;
+            font-size: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background-color: #fff;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-hover);
+            box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
+        }
+        .help-text {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-top: 0.25rem;
+        }
+        .errorlist {
+            list-style: none;
+            padding: 0;
+            margin: 0.35rem 0 0 0;
+            color: var(--error-border);
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        .btn-submit {
+            background-color: var(--primary);
+            color: #ffffff;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.15s ease-in-out;
+        }
+        .btn-submit:hover {
+            background-color: var(--primary-hover);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.925rem;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            background-color: #f1f5f9;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Arandu - Saber Digital</h1>
+        <p>Sistema de Agendamento de Biblioteca — Colégio Estadual de Tempo Integral Paulo José de Oliveira</p>
+    </header>
+
+    <main>
+        {% if messages %}
+          <ul class="messages">
+            {% for message in messages %}
+              <li class="alert {{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+
+        <section class="card">
+            <h2>Registrar Novo Empréstimo</h2>
+
+            <form method="post" action="{% url 'arandu:registrar_emprestimo' %}" novalidate>
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                    <div class="alert error">
+                        {{ form.non_field_errors }}
+                    </div>
+                {% endif %}
+
+                <div class="form-group">
+                    <label for="{{ form.usuario.id_for_label }}">{{ form.usuario.label }} *</label>
+                    {{ form.usuario }}
+                    {% if form.usuario.errors %}
+                        {{ form.usuario.errors }}
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.livro.id_for_label }}">{{ form.livro.label }} *</label>
+                    {{ form.livro }}
+                    {% if form.livro.errors %}
+                        {{ form.livro.errors }}
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.data_prevista_devolucao.id_for_label }}">{{ form.data_prevista_devolucao.label }} *</label>
+                    {{ form.data_prevista_devolucao }}
+                    {% if form.data_prevista_devolucao.help_text %}
+                        <small class="help-text">{{ form.data_prevista_devolucao.help_text }}</small>
+                    {% endif %}
+                    {% if form.data_prevista_devolucao.errors %}
+                        {{ form.data_prevista_devolucao.errors }}
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.observacoes.id_for_label }}">{{ form.observacoes.label }}</label>
+                    {{ form.observacoes }}
+                    {% if form.observacoes.errors %}
+                        {{ form.observacoes.errors }}
+                    {% endif %}
+                </div>
+
+                <button type="submit" class="btn-submit">Registrar Empréstimo</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>Últimos Empréstimos Registrados</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Aluno / Usuário</th>
+                        <th>Livro</th>
+                        <th>Previsão de Devolução</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in ultimos_emprestimos %}
+                        <tr>
+                            <td>{{ emp.usuario.nome }} ({{ emp.usuario.matricula }})</td>
+                            <td>{{ emp.livro.titulo }}</td>
+                            <td>{{ emp.data_prevista_devolucao|date:"d/m/Y" }}</td>
+                            <td>{{ emp.get_status_display }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4">Nenhum empréstimo registrado.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </main>
+</body>
+</html>

@@ -37,6 +37,8 @@ COPY resources/django/settings.py-tpl /app/resources/django/settings.py-tpl
 RUN DJANGO_DIR=$(python -c "import django, os; print(os.path.dirname(django.__file__))") && \
     cp /app/resources/django/settings.py-tpl "$DJANGO_DIR/conf/project_template/project_name/settings.py-tpl"
 
+COPY web-folder /app/web-folder
+
 WORKDIR /app/web-folder
 EXPOSE 8000 8001
-CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:8001", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["sh", "-c", "python manage.py runserver 0.0.0.0:${PORT:-8000}"]

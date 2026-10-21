@@ -1,0 +1,26 @@
+=====================================================
+ENTREGA: FORMULÁRIOS, VISÕES E VALIDAÇÃO DJANGO
+=====================================================
+
+1. LINK DO SISTEMA EM NUVEM (Google Cloud - GCP):
+   - URL do Sistema em Nuvem (Google Cloud): [INSERIR_LINK_GCP_AQUI]
+   - URL Direta da Funcionalidade: [INSERIR_LINK_GCP_AQUI]/emprestimos/novo/
+
+2. DADOS DE LOGIN / ACESSO:
+   - Status: Acesso livre / Não requer login
+   - Usuário de teste: teste_professor
+   - Senha de teste: Não se aplica (acesso público direto ao formulário; para o painel /admin/, usuário: admin / senha: admindsw)
+
+3. INSTRUÇÕES PARA TESTE DE VALIDAÇÃO BEM-SUCEDIDA (SUCESSO):
+   - Passo 1: Acessar a URL [INSERIR_LINK_GCP_AQUI]/emprestimos/novo/
+   - Passo 2: Preencher o campo Aluno / Usuário selecionando "Alana Nascimento (Aluno) - Matrícula: 202600083" (ou qualquer aluno ativo da lista) e o campo Livro selecionando "1984 - Dr. Paulo Ribeiro" (ou qualquer livro da lista)
+   - Passo 3: Preencher o campo Previsão de Devolução com uma data futura dentro de 30 dias (ex: "05/11/2026" ou "2026-11-05")
+   - Passo 4: Clicar no botão "Registrar Empréstimo"
+   - Resultado Esperado: Os dados são validados, a ação é persistida e o sistema exibe a mensagem de sucesso via Django Messages: "Empréstimo registrado com sucesso no sistema!".
+
+4. INSTRUÇÕES PARA TESTE DE VALIDAÇÃO MAL-SUCEDIDA (CRÍTICA / ERRO):
+   - Passo 1: Acessar a URL [INSERIR_LINK_GCP_AQUI]/emprestimos/novo/
+   - Passo 2: Deixar o campo Previsão de Devolução (ou Aluno / Usuário) vazio OU preencher o campo Previsão de Devolução com valor inválido no passado: "01/01/2020"
+   - Passo 3: Clicar no botão "Registrar Empréstimo"
+   - Resultado Esperado: O formulário rejeita a submissão, mantém os dados válidos preenchidos e exibe a mensagem de erro/crítica via Django Messages: "Erro na validação do formulário. Verifique os campos destacados abaixo e tente novamente.".
+=====================================================
