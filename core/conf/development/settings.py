@@ -152,3 +152,7 @@ STATIC_URL = '/static/'
 
 # Extra places for collectstatic to find static files.
 STATICFILES_DIRS = (os.path.join(BASE_DIR, 'apps/static'),)
+
+# Media files (PDFs e Capas dos Livros)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
