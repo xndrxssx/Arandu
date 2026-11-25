@@ -38,7 +38,8 @@ INSTALLED_APPS = [
     'widget_tweaks',
 
     # Enable the inner home (home)   
-    'apps.enquetes',  
+    'apps.enquetes',
+    'apps.arandu',
 
 ]
 
