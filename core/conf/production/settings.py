@@ -19,21 +19,17 @@ SECRET_KEY = "hLwoS-HbZx4eNUTqrM3osPFdHQamfLcYo38iugUCX4d"
 DEBUG = 0
 
 # load production server from .env
-ALLOWED_HOSTS        = ['projetosd.com.br']
-CSRF_TRUSTED_ORIGINS = ['https://projetosd.com.br']
+ALLOWED_HOSTS        = [h.strip() for h in os.getenv('ALLOWED_HOSTS', 'projetosd.com.br').split(',') if h.strip()]
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv('CSRF_TRUSTED_ORIGINS', 'https://projetosd.com.br').split(',') if o.strip()]
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv('CORS_ALLOWED_ORIGINS', 'https://projetosd.com.br').split(',')
+    if origin.strip()
+]
 
 ACCOUNT_DEFAULT_HTTP_PROTOCOL='https'
-
-MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
-]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -71,8 +67,19 @@ SOCIALACCOUNT_EMAIL_REQUIRED = ACCOUNT_EMAIL_REQUIRED
 SOCIALACCOUNT_STORE_TOKENS = False
 ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = LOGIN_REDIRECT_URL
 
-# EMAIL SERVER SETTINGS
+# EMAIL SERVER SETTINGS (env vars + Docker secret em produção)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('1', 'true', 't', 'yes', 'y')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = (
+    readSecret('EMAIL_HOST_PASSWORD_FILE')
+    if os.getenv('EMAIL_HOST_PASSWORD_FILE') and os.path.exists(os.environ['EMAIL_HOST_PASSWORD_FILE'])
+    else os.getenv('EMAIL_HOST_PASSWORD', '')
+)
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'no-reply@projetosd.com.br')
+DEFAULT_REPLY_TO = os.getenv('DEFAULT_REPLY_TO', 'falecom@projetosd.com.br')
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 

@@ -9,10 +9,11 @@ def main():
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 
     # added for debug
-    if settings.DEBUG:
+    if settings.DEBUG and sys.argv[1:2] == ['runserver']:
         if os.environ.get('RUN_MAIN') or os.environ.get('WERKZEUG_RUN_MAIN'):
             debugpy.listen(("0.0.0.0", 3000))
-            debugpy.wait_for_client()
+            if os.environ.get('DEBUGPY_WAIT_FOR_CLIENT', '').lower() in ('1', 'true', 'yes'):
+                debugpy.wait_for_client()
     # added for debug
 
     try:

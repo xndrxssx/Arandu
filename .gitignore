@@ -44,3 +44,8 @@ apps/static/assets/.temp
 
 data/*
 tmp/*
+
+# media uploads (public covers and private PDFs)
+media/
+private_media/
+
