@@ -1,0 +1,67 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bem-vindo(a) ao Arandu</title>
+</head>
+<body style="margin:0;padding:24px;background-color:#f4f6f8;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;">
+    <tr>
+      <td style="background-color:#1e293b;padding:24px 32px;color:#ffffff;">
+        <h1 style="margin:0;font-size:20px;line-height:1.3;">Arandu · Saber Digital</h1>
+        <p style="margin:6px 0 0;font-size:13px;color:#cbd5e1;">{{ escola_nome }}</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:28px 32px;">
+        <h2 style="margin:0 0 12px;font-size:18px;color:#111827;">Seu acesso à biblioteca digital foi criado!</h2>
+        <p style="margin:0 0 14px;font-size:14px;line-height:1.6;">
+          Olá, <strong>{{ perfil.nome }}</strong>!
+        </p>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">
+          Seu cadastro na biblioteca virtual <strong>Arandu — Saber Digital</strong> foi realizado em
+          <strong>{{ cadastrado_em|naturalday }}</strong> ({{ cadastrado_em|naturaltime }}).
+        </p>
+
+        <div style="padding:16px;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin:0 0 20px;font-size:14px;line-height:1.7;">
+          <p style="margin:0;"><strong>Matrícula:</strong> {{ perfil.matricula }}</p>
+          <p style="margin:0;"><strong>E-mail institucional:</strong> {{ perfil.email }}</p>
+          {% if perfil.turma %}
+          <p style="margin:0;"><strong>Turma:</strong> {{ perfil.turma.nome }} ({{ perfil.turma.get_turno_display }} · {{ perfil.turma.ano_letivo }})</p>
+          {% endif %}
+          {% if senha_temporaria %}
+          <p style="margin:10px 0 0;padding-top:10px;border-top:1px dashed #cbd5e1;">
+            <strong>Senha temporária de primeiro acesso:</strong>
+            <code style="background-color:#e2e8f0;padding:3px 8px;border-radius:4px;font-size:14px;">{{ senha_temporaria }}</code>
+          </p>
+          {% endif %}
+        </div>
+
+        {% if senha_temporaria %}
+        <p style="margin:0 0 20px;font-size:13px;color:#475569;line-height:1.5;">
+          Por segurança, recomendamos redefinir sua senha assim que fizer o primeiro acesso.
+        </p>
+        {% else %}
+        <p style="margin:0 0 20px;font-size:13px;color:#475569;line-height:1.5;">
+          Utilize a senha provisória informada pela biblioteca ou solicite a redefinição de senha na tela de login.
+        </p>
+        {% endif %}
+
+        <p style="margin:0 0 10px;text-align:center;">
+          <a href="{{ login_url }}"
+             style="display:inline-block;padding:12px 24px;background-color:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold;border-radius:6px;font-size:14px;">
+            Acessar a biblioteca
+          </a>
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:16px 32px;background-color:#f8fafc;border-top:1px solid #e5e7eb;font-size:12px;color:#64748b;text-align:center;">
+        Você pode entrar usando seu e-mail ou número de matrícula · {{ escola_nome }}
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
