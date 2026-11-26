@@ -1,20 +1,20 @@
 from django.contrib import admin
 
-from .models import Categoria, Emprestimo, Livro, PerfilUsuario
+from .models import (
+    Autor,
+    Avaliacao,
+    Categoria,
+    Editora,
+    Emprestimo,
+    Livro,
+    RegistroAcesso,
+)
 
 
 class LivroInline(admin.TabularInline):
     model = Livro
     extra = 0
-    fields = ('titulo', 'autor', 'ano_publicacao', 'quantidade_disponivel', 'quantidade_total')
-    show_change_link = True
-
-
-class EmprestimoUsuarioInline(admin.TabularInline):
-    model = Emprestimo
-    extra = 0
-    fields = ('livro', 'data_emprestimo', 'data_prevista_devolucao', 'status')
-    readonly_fields = ('data_emprestimo',)
+    fields = ('titulo', 'ano_publicacao', 'quantidade_disponivel', 'quantidade_total', 'ativo')
     show_change_link = True
 
 
@@ -34,29 +34,33 @@ class CategoriaAdmin(admin.ModelAdmin):
     inlines = [LivroInline]
 
 
-@admin.register(PerfilUsuario)
-class PerfilUsuarioAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'matricula', 'email', 'turma', 'tipo', 'ativo', 'criado_em')
-    list_filter = ('tipo', 'ativo', 'turma', 'criado_em')
-    search_fields = ('nome', 'matricula', 'email', 'turma', 'telefone')
-    list_editable = ('ativo',)
-    inlines = [EmprestimoUsuarioInline]
+@admin.register(Autor)
+class AutorAdmin(admin.ModelAdmin):
+    list_display = ('nome', 'nacionalidade', 'criado_em')
+    search_fields = ('nome', 'nacionalidade')
+
+
+@admin.register(Editora)
+class EditoraAdmin(admin.ModelAdmin):
+    list_display = ('nome', 'cidade', 'site', 'criado_em')
+    search_fields = ('nome', 'cidade')
 
 
 @admin.register(Livro)
 class LivroAdmin(admin.ModelAdmin):
     list_display = (
         'titulo',
-        'autor',
         'categoria',
+        'editora',
         'ano_publicacao',
         'quantidade_disponivel',
         'quantidade_total',
         'dominio_publico',
-        'arquivo_pdf',
+        'ativo',
     )
-    list_filter = ('categoria', 'dominio_publico', 'ano_publicacao', 'criado_em')
-    search_fields = ('titulo', 'autor', 'isbn', 'sinopse')
+    list_filter = ('categoria', 'dominio_publico', 'ativo', 'ano_publicacao', 'criado_em')
+    search_fields = ('titulo', 'autores__nome', 'isbn', 'sinopse')
+    autocomplete_fields = ['categoria', 'editora', 'autores', 'cadastrado_por']
     inlines = [EmprestimoLivroInline]
 
 
@@ -75,3 +79,19 @@ class EmprestimoAdmin(admin.ModelAdmin):
     search_fields = ('livro__titulo', 'livro__isbn', 'usuario__nome', 'usuario__matricula')
     date_hierarchy = 'data_emprestimo'
     autocomplete_fields = ['livro', 'usuario']
+
+
+@admin.register(Avaliacao)
+class AvaliacaoAdmin(admin.ModelAdmin):
+    list_display = ('livro', 'usuario', 'nota', 'criado_em')
+    list_filter = ('nota', 'criado_em')
+    search_fields = ('livro__titulo', 'usuario__nome', 'comentario')
+    autocomplete_fields = ['livro', 'usuario']
+
+
+@admin.register(RegistroAcesso)
+class RegistroAcessoAdmin(admin.ModelAdmin):
+    list_display = ('livro', 'usuario', 'tipo', 'ip', 'acessado_em')
+    list_filter = ('tipo', 'acessado_em')
+    search_fields = ('livro__titulo', 'usuario__nome', 'ip')
+    readonly_fields = ('acessado_em',)
