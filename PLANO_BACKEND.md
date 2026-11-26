@@ -146,8 +146,9 @@ Todas as listagens usam `page_size=12` (ajustável via `?page_size=`, máximo `5
 
 > **Status Atual do Repositório (LEIA ANTES DE CODAR / USAR IA):**
 > - **Épico 1 (`T1.1` e `T1.2`) — ✅ CONCLUÍDO E VALIDADO NO DOCKER + POSTGRESQL:** Dependências pinadas em `requirements.txt`, `core/settings.py` (DRF, JWT, `AranduPagination`, CORS, `LocaleMiddleware`, e-mail dev/prod, `PRIVATE_MEDIA_ROOT`, `/api/schema/` e `/api/docs/`), app `apps/contas` (`Turma`, `PerfilUsuario`, `validators.py`), app `apps/arandu` (`Categoria`, `Autor`, `Editora`, `Livro`, `Emprestimo`, `Avaliacao`, `RegistroAcesso`, `storage.py`, `validators.py`) e migrações iniciais (`contas/0001_initial.py` e `arandu/0001_initial.py`) **já estão implementados e testados no container `web` + PostgreSQL**.
+> - **Épico 2 (`T2.1`, `T2.2` e `T2.3`) — ✅ CONCLUÍDO E VALIDADO NO DOCKER + POSTGRESQL:** Autenticação JWT por e-mail ou matrícula (`/api/auth/login/`, `/api/auth/refresh/`, `/api/auth/me/`), permissões `IsUsuarioAtivo` e `IsBibliotecario`, recuperação de senha (`/api/auth/esqueci-senha/`, `/api/auth/redefinir-senha/`), e-mails HTML com `humanize` (`reset_senha.html`, `boas_vindas_aluno.html`, `confirmacao_emprestimo.html`), gestão transacional ACID de alunos e turmas (`/api/gestao/alunos/`, `/api/gestao/turmas/`) e 19 testes automatizados (`apps/contas/tests.py`) passando 100%.
 > - **Correções de DX incluídas:** `init-services-projetosd-web.sh` normalizado para LF com `.gitattributes` (`*.sh text eol=lf`) e `manage.py` sem travar em `debugpy.wait_for_client()` (ativável via `DEBUGPY_WAIT_FOR_CLIENT=1`).
-> - **NÃO recrie** esses arquivos, modelos ou migrações iniciais. Comece a partir dos **Épicos 2, 3, 4 ou 5** usando a estrutura já pronta.
+> - **NÃO recrie** esses arquivos, modelos ou migrações iniciais. Comece a partir dos **Épicos 3, 4 ou 5** usando a estrutura já pronta.
 > - **Ao subir o Docker localmente após puxar este commit (dentro de `backend/Arandu`):** rode `docker compose build web && docker compose up -d projetosd_db web && docker exec web python manage.py migrate`.
 
 ### Épico 1 — Fundação *(✅ CONCLUÍDO — desbloqueia o restante do time)*
@@ -176,33 +177,33 @@ Todas as listagens usam `page_size=12` (ajustável via `?page_size=`, máximo `5
 
 ---
 
-### Épico 2 — Autenticação, Recuperação de Senha, E-mail e Alunos (`apps/contas`)
+### Épico 2 — Autenticação, Recuperação de Senha, E-mail e Alunos (`apps/contas`) *(✅ CONCLUÍDO)*
 
-#### T2.1 — Login JWT (E-mail ou Matrícula) e Permissões
+#### T2.1 — Login JWT (E-mail ou Matrícula) e Permissões — ✅ CONCLUÍDA
 - **Branch:** `feat/contas-auth-jwt`
 - **Arquivos:** `apps/contas/{serializers.py,views.py,permissions.py,urls.py}`
 - **Escopo:**
-  - [ ] Implementar `POST /api/auth/login/` aceitando e-mail ou matrícula + senha, checando `user.is_active` **e** `perfil.ativo`.
-  - [ ] Implementar `POST /api/auth/refresh/` e `GET /api/auth/me/`.
-  - [ ] Criar permissões `IsBibliotecario` e `IsUsuarioAtivo`.
+  - [x] Implementar `POST /api/auth/login/` aceitando e-mail ou matrícula + senha, checando `user.is_active` **e** `perfil.ativo`.
+  - [x] Implementar `POST /api/auth/refresh/` e `GET /api/auth/me/`.
+  - [x] Criar permissões `IsBibliotecario` e `IsUsuarioAtivo`.
 - **Critério de aceite:** Login funciona com matrícula e com e-mail; conta inativa recebe `401/403`; aluno recebe `403` em `/api/gestao/*`.
 
-#### T2.2 — Recuperação de Senha + E-mails HTML com `humanize`
+#### T2.2 — Recuperação de Senha + E-mails HTML com `humanize` — ✅ CONCLUÍDA
 - **Branch:** `feat/contas-reset-senha`
 - **Arquivos:** `apps/contas/{emails.py,views.py,serializers.py}`, `apps/templates/emails/{reset_senha.html,boas_vindas_aluno.html,confirmacao_emprestimo.html}`
 - **Escopo:**
-  - [ ] Implementar `POST /api/auth/esqueci-senha/` (throttled, resposta sempre `200`, gera `uid` + `token` com `default_token_generator`).
-  - [ ] Implementar `POST /api/auth/redefinir-senha/` validando token + `AUTH_PASSWORD_VALIDATORS`.
-  - [ ] Criar templates HTML de e-mail usando `{% load humanize %}`.
+  - [x] Implementar `POST /api/auth/esqueci-senha/` (throttled, resposta sempre `200`, gera `uid` + `token` com `default_token_generator`).
+  - [x] Implementar `POST /api/auth/redefinir-senha/` validando token + `AUTH_PASSWORD_VALIDATORS`.
+  - [x] Criar templates HTML de e-mail usando `{% load humanize %}`.
 - **Critério de aceite:** Fluxo completo funciona em dev via `console.EmailBackend` e rejeita token expirado ou reutilizado.
 
-#### T2.3 — Gestão Transacional de Alunos e Turmas (Exclusivo Bibliotecário)
+#### T2.3 — Gestão Transacional de Alunos e Turmas (Exclusivo Bibliotecário) — ✅ CONCLUÍDA
 - **Branch:** `feat/contas-gestao-alunos`
 - **Arquivos:** `apps/contas/{services.py,serializers.py,views.py,urls.py}`
 - **Escopo:**
-  - [ ] Criar `services.py` para cadastrar/editar/desativar aluno sincronizando `User` + `PerfilUsuario` dentro de `transaction.atomic()`.
-  - [ ] Se senha inicial não for enviada no `POST`, gerar senha temporária segura, retorná-la uma única vez no `201` e agendar e-mail via `transaction.on_commit()`.
-  - [ ] Expor `GET/POST/PATCH /api/gestao/alunos/` (paginado + busca por nome/matrícula/turma) e `GET/POST /api/gestao/turmas/`.
+  - [x] Criar `services.py` para cadastrar/editar/desativar aluno sincronizando `User` + `PerfilUsuario` dentro de `transaction.atomic()`.
+  - [x] Se senha inicial não for enviada no `POST`, gerar senha temporária segura, retorná-la uma única vez no `201` e agendar e-mail via `transaction.on_commit()`.
+  - [x] Expor `GET/POST/PATCH /api/gestao/alunos/` (paginado + busca por nome/matrícula/turma) e `GET/POST /api/gestao/turmas/`.
 - **Critério de aceite:** Desativar aluno via `PATCH` bloqueia o login imediatamente; criação gera e-mail apenas após commit confirmado.
 
 ---
@@ -344,10 +345,10 @@ flowchart LR
 - [x] Mínimo de 7 a 10 modelos (**9 modelos** implementados no Épico 1)
 - [x] Mínimo de 2 aplicações Django (`apps.contas` + `apps.arandu` no Épico 1)
 - [ ] Customização do Admin (`fieldsets`, `inlines`, `actions`) *(registro base pronto; customização avançada na T5.1)*
-- [ ] Autenticação + Recuperação de senha + Envio de e-mail
+- [x] Autenticação + Recuperação de senha + Envio de e-mail *(Épico 2)*
 - [x] Validação de dados (`validators.py`: ISBN, magic bytes PDF, tamanho, matrícula, nota — Épico 1)
-- [ ] Banco de dados PostgreSQL + transações ACID *(modelos/constraints prontos; transações ACID na T2.3 e T4.1)*
-- [ ] Humanização (`django.contrib.humanize` nos e-mails e comprovante)
+- [ ] Banco de dados PostgreSQL + transações ACID *(modelos/constraints no Épico 1; gestão de alunos ACID na T2.3; empréstimos ACID na T4.1)*
+- [x] Humanização (`django.contrib.humanize` nos e-mails HTML — Épico 2; comprovante na T4.3)
 - [ ] Framework de Mensagens (`django.contrib.messages` no Admin e views Django)
 - [x] Paginação (`AranduPagination` configurada em `core/pagination.py` — Épico 1)
 - [ ] *(Desejável)* Consumir API REST externa (Open Library / Google Books por ISBN)

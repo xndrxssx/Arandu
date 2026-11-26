@@ -108,6 +108,18 @@ SPECTACULAR_SETTINGS = {
 # CORS headers exposed to the frontend (e.g. PDF download filename)
 CORS_EXPOSE_HEADERS = ['Content-Disposition']
 
+# URL base do Frontend (usada para montar links nos e-mails transacionais)
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+
+# Validadores de senha garantidos em dev e prod
+if 'AUTH_PASSWORD_VALIDATORS' not in globals():
+    AUTH_PASSWORD_VALIDATORS = [
+        {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+        {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 6}},
+        {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+        {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+    ]
+
 # Media & Private Media (PDFs are stored in PRIVATE_MEDIA_ROOT and NEVER exposed via MEDIA_URL)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # noqa: F405
