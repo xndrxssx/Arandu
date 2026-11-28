@@ -52,13 +52,14 @@ class LivroAdmin(admin.ModelAdmin):
         'titulo',
         'categoria',
         'editora',
+        'formato',
         'ano_publicacao',
         'quantidade_disponivel',
         'quantidade_total',
         'dominio_publico',
         'ativo',
     )
-    list_filter = ('categoria', 'dominio_publico', 'ativo', 'ano_publicacao', 'criado_em')
+    list_filter = ('categoria', 'formato', 'dominio_publico', 'ativo', 'ano_publicacao', 'criado_em')
     search_fields = ('titulo', 'autores__nome', 'isbn', 'sinopse')
     autocomplete_fields = ['categoria', 'editora', 'autores', 'cadastrado_por']
     inlines = [EmprestimoLivroInline]

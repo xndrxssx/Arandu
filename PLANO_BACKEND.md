@@ -17,10 +17,9 @@
    - **`apps/contas`** *(novo app)*: `Turma`, `PerfilUsuario`, autenticação JWT, recuperação de senha, envio de e-mails e gestão de alunos.
    - **`apps/arandu`** *(app existente)*: `Categoria`, `Autor`, `Editora`, `Livro`, `Emprestimo`, `Avaliacao`, `RegistroAcesso`, serviços ACID, leitura/download protegido de PDF e integração com API externa (ISBN).
 3. **Total de modelos (requisito: 7 a 10 modelos)**: **9 modelos** de domínio (além das tabelas nativas do Django/allauth).
-4. **Regra de Direitos Autorais (PDF único)**:
-   - Toda obra aceita apenas formato **PDF** (validado por extensão + *magic bytes* `%PDF-` + tamanho máximo de 25 MB).
-   - **`dominio_publico = True`**: com empréstimo `ATIVO`, o aluno pode **Ler na Plataforma** (`/ler/`) e **Baixar o PDF** (`/download/`).
-   - **`dominio_publico = False`**: download **bloqueado** (`403 Forbidden`); com empréstimo `ATIVO`, o aluno só pode **Ler na Plataforma** (`/ler/`).
+4. **Regra de Direitos Autorais e Formatos (Regra Híbrida PDF / EPUB)**:
+   - **`dominio_publico = True` (Domínio Público):** aceita **PDF ou EPUB** (validados por extensão + *magic bytes* `%PDF-` ou ZIP com `mimetype=application/epub+zip` + limite de 25 MB). Qualquer usuário autenticado pode **Baixar diretamente** (`/download/`, sem exigir empréstimo nem consumir estoque, registrando `RegistroAcesso(DOWNLOAD)` com `emprestimo=None`). Se o arquivo for **PDF**, também libera leitura no navegador (`/ler/`).
+   - **`dominio_publico = False` (Aluguel Temporário):** aceita **apenas PDF** (rejeita `.epub` na validação, pois o leitor web próprio usa `pdfjs-dist`). Download **bloqueado** (`403 Forbidden`); exige **empréstimo `ATIVO`** (ACID) para **Ler na Plataforma** (`/ler/`).
 5. **Rotas sem mexer no Nginx**: todas as rotas da API ficam montadas sob `/api/...` em `core/urls.py`, funcionando tanto em `http://localhost:8080/api/...` quanto em `https://projetosd.local/api/...`.
 6. **Provisionamento Fechado de Usuários (sem autocadastro público)**:
    - Por ser um sistema de uso interno escolar, **não existe cadastro público aberto**.
@@ -94,7 +93,7 @@ erDiagram
 | 3 | `arandu` | **`Categoria`** | `id` (UUID), `nome` (unique), `slug` (unique automático), `descricao`, `criado_em`. |
 | 4 | `arandu` | **`Autor`** | `id` (UUID), `nome` (db_index), `nacionalidade` (opcional), `biografia` (opcional). |
 | 5 | `arandu` | **`Editora`** | `id` (UUID), `nome` (unique), `cidade` (opcional), `site` (opcional). |
-| 6 | `arandu` | **`Livro`** | `id` (UUID), `titulo`, `autores` (`M2M(Autor)`), `editora` (`FK(Editora, null=True)`), `categoria` (`FK(Categoria, PROTECT)`), `isbn` (`blank=True, null=True, unique=True` — converte `""` para `None`), `ano_publicacao`, `sinopse`, `capa` (mídia pública), `arquivo_pdf` (`private_storage`, validador `.pdf` + magic bytes + 25 MB), `quantidade_total` (`>= 1`), `quantidade_disponivel`, `dominio_publico` (bool), `ativo` (bool), `cadastrado_por` (`FK(PerfilUsuario, SET_NULL, null=True)`). Constraints: `disponivel <= total` e `total >= 1`. |
+| 6 | `arandu` | **`Livro`** | `id` (UUID), `titulo`, `autores` (`M2M(Autor)`), `editora` (`FK(Editora, null=True)`), `categoria` (`FK(Categoria, PROTECT)`), `isbn` (`blank=True, null=True, unique=True` — converte `""` para `None`), `ano_publicacao`, `sinopse`, `capa` (mídia pública), `arquivo_pdf` (`private_storage`, `validar_arquivo_digital`: `.pdf` ou `.epub` + magic bytes + 25 MB), `formato` (`PDF`/`EPUB`, detectado automaticamente; `EPUB` permitido apenas se `dominio_publico=True`), `quantidade_total` (`>= 1`), `quantidade_disponivel`, `dominio_publico` (bool), `ativo` (bool), `cadastrado_por` (`FK(PerfilUsuario, SET_NULL, null=True)`). Constraints: `disponivel <= total` e `total >= 1`. |
 | 7 | `arandu` | **`Emprestimo`** | `id` (UUID), `usuario` (`FK(PerfilUsuario, PROTECT)`), `livro` (`FK(Livro, PROTECT)`), `data_emprestimo`, `data_prevista_devolucao`, `data_devolucao`, `status` (`ATIVO`/`DEVOLVIDO`/`ATRASADO`), `renovacoes`, `observacoes`. Constraint: `UniqueConstraint` condicional para empréstimo aberto (`ATIVO`/`ATRASADO`) por `(usuario, livro)`. |
 | 8 | `arandu` | **`Avaliacao`** | `id` (UUID), `usuario` (`FK(PerfilUsuario, CASCADE)`), `livro` (`FK(Livro, CASCADE)`), `nota` (`1..5`), `comentario` (opcional), `criado_em`. Constraint: 1 avaliação por `(usuario, livro)`. |
 | 9 | `arandu` | **`RegistroAcesso`** | `id` (UUID), `usuario` (`FK(PerfilUsuario, SET_NULL, null=True)`), `livro` (`FK(Livro, CASCADE)`), `emprestimo` (`FK(Emprestimo, SET_NULL, null=True)`), `tipo` (`LEITURA`/`DOWNLOAD`), `ip` (opcional), `acessado_em`. |
@@ -126,12 +125,12 @@ Todas as listagens usam `page_size=12` (ajustável via `?page_size=`, máximo `5
 | **Auth** | `GET /api/auth/me/` | Autenticado | Dados do usuário, perfil, turma e resumo de empréstimos |
 | **Auth** | `POST /api/auth/esqueci-senha/` | Público (throttled) | Envia e-mail HTML (`humanize`) com `uid` + `token`; retorna sempre `200` |
 | **Auth** | `POST /api/auth/redefinir-senha/` | Público | Valida `uid`/`token` e aplica nova senha |
-| **Catálogo** | `GET /api/livros/` | Autenticado | Paginado; busca (`titulo`/`autores`/`isbn`), filtros (`categoria`, `dominio_publico`, `disponivel`); retorna `nota_media` e status do empréstimo do usuário |
-| **Catálogo** | `GET /api/livros/<uuid>/` | Autenticado | Detalhes completos + `pode_ler` + `pode_baixar` + empréstimo ativo do aluno |
+| **Catálogo** | `GET /api/livros/` | Autenticado | Paginado; busca (`titulo`/`autores`/`isbn`), filtros (`categoria` UUID/slug, `dominio_publico`, `disponivel`, `formato`); retorna `nota_media`, `total_acessos` e `meu_emprestimo` |
+| **Catálogo** | `GET /api/livros/<uuid>/` | Autenticado | Detalhes completos + `pode_ler` + `pode_baixar` + `meu_emprestimo` + `minha_avaliacao` |
 | **Catálogo** | `GET/POST /api/livros/<uuid>/avaliacoes/` | Autenticado | Lista paginada e criação/edição de avaliação (nota `1..5`) |
 | **Auxiliares** | `GET/POST /api/categorias/`, `/autores/`, `/editoras/` | GET: Autenticado / POST: Bibliotecário | Alimenta filtros e "+ Nova categoria" no upload |
-| **PDF** | `GET /api/livros/<uuid>/ler/` | Empréstimo `ATIVO` ou Bibliotecário | Streaming `inline` de `private_media/` + registra `RegistroAcesso(LEITURA)` |
-| **PDF** | `GET /api/livros/<uuid>/download/` | Empréstimo `ATIVO` + `dominio_publico=True` | `403` se `dominio_publico=False`; registra `RegistroAcesso(DOWNLOAD)` |
+| **PDF/Arquivo** | `GET /api/livros/<uuid>/ler/` | Empréstimo `ATIVO`, Bibliotecário ou `dominio_publico=True` (somente PDF) | Streaming `inline` de `private_media/` + registra `RegistroAcesso(LEITURA)` |
+| **PDF/Arquivo** | `GET /api/livros/<uuid>/download/` | Autenticado + `dominio_publico=True` (download direto, sem empréstimo) | `403` se `dominio_publico=False`; suporta PDF e EPUB; registra `RegistroAcesso(DOWNLOAD)` |
 | **Empréstimos** | `GET /api/emprestimos/meus/` | Autenticado | Paginado, filtro `status` (`ATIVO`/`ATRASADO`/`DEVOLVIDO`) |
 | **Empréstimos** | `POST /api/emprestimos/` | Autenticado | Transação ACID (`select_for_update` + `F()` + `on_commit`) |
 | **Empréstimos** | `POST /api/emprestimos/<uuid>/devolver/` | Dono ou Bibliotecário | Transação ACID idempotente |
@@ -152,8 +151,9 @@ Todas as listagens usam `page_size=12` (ajustável via `?page_size=`, máximo `5
 > **Status Atual do Repositório (LEIA ANTES DE CODAR / USAR IA):**
 > - **Épico 1 (`T1.1` e `T1.2`) — ✅ CONCLUÍDO E VALIDADO NO DOCKER + POSTGRESQL:** Dependências pinadas em `requirements.txt`, `core/settings.py` (DRF, JWT, `AranduPagination`, CORS, `LocaleMiddleware`, e-mail dev/prod, `PRIVATE_MEDIA_ROOT`, `/api/schema/` e `/api/docs/`), app `apps/contas` (`Turma`, `PerfilUsuario`, `validators.py`), app `apps/arandu` (`Categoria`, `Autor`, `Editora`, `Livro`, `Emprestimo`, `Avaliacao`, `RegistroAcesso`, `storage.py`, `validators.py`) e migrações iniciais (`contas/0001_initial.py` e `arandu/0001_initial.py`) **já estão implementados e testados no container `web` + PostgreSQL**.
 > - **Épico 2 (`T2.1`, `T2.2` e `T2.3`) — ✅ CONCLUÍDO E VALIDADO NO DOCKER + POSTGRESQL:** Autenticação JWT por e-mail ou matrícula (`/api/auth/login/`, `/api/auth/refresh/`, `/api/auth/me/`), permissões `IsUsuarioAtivo` e `IsBibliotecario`, recuperação de senha (`/api/auth/esqueci-senha/`, `/api/auth/redefinir-senha/`), e-mails HTML com `humanize` (`reset_senha.html`, `boas_vindas_aluno.html`, `confirmacao_emprestimo.html`), gestão transacional ACID de alunos e turmas (`/api/gestao/alunos/`, `/api/gestao/turmas/`) e 19 testes automatizados (`apps/contas/tests.py`) passando 100%.
+> - **Épico 3 (`T3.1`) — ✅ IMPLEMENTADA *(rodar `migrate` + `test` no Docker)*:** Regra híbrida PDF/EPUB (`Livro.formato`, `validar_arquivo_digital`, migration `arandu/0002_livro_formato_e_arquivo_digital.py`), catálogo paginado sem N+1 (`GET /api/livros/`, `GET /api/livros/<uuid>/`), filtros (`categoria`, `dominio_publico`, `disponivel`, `formato`, `autor`, `editora`, `ano_publicacao`), avaliações (`GET/POST /api/livros/<uuid>/avaliacoes/`), auxiliares (`/api/categorias/`, `/api/autores/`, `/api/editoras/`) e testes em `apps/arandu/tests.py`.
 > - **Correções de DX incluídas:** `init-services-projetosd-web.sh` normalizado para LF com `.gitattributes` (`*.sh text eol=lf`) e `manage.py` sem travar em `debugpy.wait_for_client()` (ativável via `DEBUGPY_WAIT_FOR_CLIENT=1`).
-> - **NÃO recrie** esses arquivos, modelos ou migrações iniciais. Comece a partir dos **Épicos 3, 4 ou 5** usando a estrutura já pronta.
+> - **NÃO recrie** esses arquivos, modelos ou migrações. Próximas tasks: **`T3.2`**, **`T3.3`**, **Épico 4** ou **Épico 5**.
 > - **Ao subir o Docker localmente após puxar este commit (dentro de `backend/Arandu`):** rode `docker compose build web && docker compose up -d projetosd_db web && docker exec web python manage.py migrate`.
 
 ### Épico 1 — Fundação *(✅ CONCLUÍDO — desbloqueia o restante do time)*
@@ -215,14 +215,15 @@ Todas as listagens usam `page_size=12` (ajustável via `?page_size=`, máximo `5
 
 ### Épico 3 — Catálogo, Upload de PDF, API Externa ISBN e Avaliações (`apps/arandu`)
 
-#### T3.1 — Catálogo Paginado, Filtros, Detalhes e Avaliações
+#### T3.1 — Catálogo Paginado, Filtros, Detalhes e Avaliações — ✅ IMPLEMENTADA
 - **Branch:** `feat/arandu-catalogo`
-- **Arquivos:** `apps/arandu/{serializers.py,filters.py,views.py,urls.py}`
+- **Arquivos:** `apps/arandu/{validators.py,models.py,migrations/0002_livro_formato_e_arquivo_digital.py,filters.py,serializers.py,views.py,urls.py,tests.py}`, `core/urls.py`
 - **Escopo:**
-  - [ ] Implementar `GET /api/livros/` e `GET /api/livros/<uuid>/` com `select_related`, `prefetch_related` e `annotate(nota_media, total_avaliacoes)` (sem N+1).
-  - [ ] Suportar busca (`titulo`, `autores__nome`, `isbn`) e filtros (`categoria`, `dominio_publico`, `disponivel`).
-  - [ ] Implementar `GET/POST /api/livros/<uuid>/avaliacoes/` (paginado, 1 avaliação por aluno/livro) e endpoints `/api/categorias/`, `/autores/`, `/editoras/`.
-- **Critério de aceite:** Listagem paginada responde no envelope padrão, sem expor URL direta de PDF.
+  - [x] Implementar `GET /api/livros/` e `GET /api/livros/<uuid>/` com `select_related`, `prefetch_related` e subqueries anotadas (`nota_media`, `total_avaliacoes`, `total_acessos`) sem N+1.
+  - [x] Suportar busca (`titulo`, `autores__nome`, `isbn`) e filtros (`categoria` UUID/slug, `dominio_publico`, `disponivel`, `formato`, `autor`, `editora`, `ano_publicacao`).
+  - [x] Implementar `GET/POST /api/livros/<uuid>/avaliacoes/` (paginado, 1 avaliação por aluno/livro com criação/atualização) e endpoints `/api/categorias/`, `/autores/`, `/editoras/`.
+  - [x] Suportar regra híbrida PDF/EPUB (`dominio_publico=True` aceita PDF/EPUB com download direto; `dominio_publico=False` aceita somente PDF).
+- **Critério de aceite:** Listagem paginada responde no envelope padrão, sem expor URL direta do arquivo privado, com suíte `apps/arandu/tests.py`.
 
 #### T3.2 — Gestão do Acervo, Upload de PDF e Resumo
 - **Branch:** `feat/arandu-gestao-livros`
@@ -257,9 +258,9 @@ Todas as listagens usam `page_size=12` (ajustável via `?page_size=`, máximo `5
 - **Branch:** `feat/arandu-pdf-protegido`
 - **Arquivos:** `apps/arandu/views.py`
 - **Escopo:**
-  - [ ] `GET /api/livros/<uuid>/ler/`: exige empréstimo `ATIVO` válido (ou `IsBibliotecario`), grava `RegistroAcesso(LEITURA)` e retorna `FileResponse` `inline` com `Cache-Control: private, no-store` e `X-Content-Type-Options: nosniff`.
-  - [ ] `GET /api/livros/<uuid>/download/`: exige empréstimo `ATIVO` válido **E** `dominio_publico=True` (caso contrário `403`), grava `RegistroAcesso(DOWNLOAD)` e retorna `FileResponse(..., as_attachment=True)`.
-- **Critério de aceite:** Obra com `dominio_publico=False` permite `200` em `/ler/` e retorna `403` em `/download/`.
+  - [ ] `GET /api/livros/<uuid>/ler/`: exclusivo para obras em **PDF**; exige empréstimo `ATIVO` válido, `IsBibliotecario` ou `dominio_publico=True`; grava `RegistroAcesso(LEITURA)` e retorna `FileResponse` `inline` com `Cache-Control: private, no-store` e `X-Content-Type-Options: nosniff`.
+  - [ ] `GET /api/livros/<uuid>/download/`: exige usuário autenticado + `dominio_publico=True` (download direto sem exigir empréstimo; `403` se `dominio_publico=False`), envia `Content-Type` adequado (`application/pdf` ou `application/epub+zip`), grava `RegistroAcesso(DOWNLOAD)` e retorna `FileResponse(..., as_attachment=True)`.
+- **Critério de aceite:** Obra com `dominio_publico=False` permite `200` em `/ler/` (com empréstimo ativo) e retorna `403` em `/download/`; obra com `dominio_publico=True` permite download direto (PDF ou EPUB).
 
 #### T4.3 — API Pública, Sessão Anônima, i18n e Comprovante Django *(Desejáveis + Requisitos Django)*
 - **Branch:** `feat/arandu-publico-i18n`

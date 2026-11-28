@@ -9,7 +9,12 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from .storage import private_storage
-from .validators import validar_arquivo_pdf, validar_isbn, validar_nota
+from .validators import (
+    detectar_formato_arquivo,
+    validar_arquivo_digital,
+    validar_isbn,
+    validar_nota,
+)
 
 
 class Categoria(models.Model):
@@ -143,6 +148,13 @@ class Editora(models.Model):
 class Livro(models.Model):
     """Obra digital catalogada no acervo com controle de licenças/exemplares simultâneos."""
 
+    FORMATO_PDF = 'PDF'
+    FORMATO_EPUB = 'EPUB'
+    FORMATO_CHOICES = [
+        (FORMATO_PDF, 'PDF'),
+        (FORMATO_EPUB, 'EPUB'),
+    ]
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -201,8 +213,15 @@ class Livro(models.Model):
         upload_to='livros/pdfs/',
         blank=True,
         null=True,
-        validators=[validar_arquivo_pdf],
-        verbose_name='Arquivo Digital (PDF)',
+        validators=[validar_arquivo_digital],
+        verbose_name='Arquivo Digital (PDF / EPUB)',
+    )
+    formato = models.CharField(
+        max_length=10,
+        choices=FORMATO_CHOICES,
+        default=FORMATO_PDF,
+        db_index=True,
+        verbose_name='Formato do Arquivo',
     )
     quantidade_total = models.PositiveIntegerField(
         default=1,
@@ -259,9 +278,15 @@ class Livro(models.Model):
             isbn_limpo = self.isbn.strip()
             self.isbn = isbn_limpo or None
 
+    def _sincronizar_formato(self):
+        formato_detectado = detectar_formato_arquivo(self.arquivo_pdf)
+        if formato_detectado is not None:
+            self.formato = formato_detectado
+
     def clean(self):
         super().clean()
         self._normalizar_isbn()
+        self._sincronizar_formato()
 
         if self.quantidade_total is not None and self.quantidade_total < 1:
             raise ValidationError({
@@ -285,17 +310,37 @@ class Livro(models.Model):
                 'ano_publicacao': _('O ano de publicação não pode estar no futuro.')
             })
 
+        if not self.dominio_publico and self.formato == self.FORMATO_EPUB:
+            raise ValidationError({
+                'arquivo_pdf': _(
+                    'Obras em aluguel temporário devem estar em formato PDF para leitura no navegador.'
+                )
+            })
+
     def save(self, *args, **kwargs):
         self._normalizar_isbn()
+        self._sincronizar_formato()
         super().save(*args, **kwargs)
 
     @property
     def disponivel(self):
-        return self.ativo and self.quantidade_disponivel > 0
+        return self.ativo and (self.dominio_publico or self.quantidade_disponivel > 0)
+
+    @property
+    def possui_arquivo(self):
+        return bool(self.arquivo_pdf)
 
     @property
     def possui_pdf(self):
-        return bool(self.arquivo_pdf)
+        return bool(self.arquivo_pdf) and self.formato == self.FORMATO_PDF
+
+    @property
+    def pode_baixar_direto(self):
+        return self.ativo and self.dominio_publico and self.possui_arquivo
+
+    @property
+    def pode_ler_online_direto(self):
+        return self.ativo and self.dominio_publico and self.possui_pdf
 
     def __str__(self):
         return self.titulo
@@ -395,7 +440,7 @@ class Emprestimo(models.Model):
 
     @property
     def pode_baixar(self):
-        return self.pode_ler and self.livro.dominio_publico
+        return self.livro.pode_baixar_direto
 
     def __str__(self):
         return f'{self.livro.titulo} — {self.usuario.nome} ({self.get_status_display()})'
