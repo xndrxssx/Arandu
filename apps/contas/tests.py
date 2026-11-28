@@ -1,4 +1,5 @@
 from datetime import timedelta
+import html
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -381,7 +382,7 @@ class GestaoAlunosTurmasTests(Epico2BaseMixin, APITestCase):
         # E-mail de boas-vindas disparado após commit com a senha temporária
         self.assertEqual(len(mail.outbox), 1)
         html_body, _ = mail.outbox[0].alternatives[0]
-        self.assertIn(senha_temp, html_body)
+        self.assertIn(html.escape(senha_temp), html_body)
         self.assertIn('2026-00202', html_body)
 
         # GET subsequente nunca expõe senha_temporaria

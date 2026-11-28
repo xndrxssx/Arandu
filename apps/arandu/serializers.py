@@ -1,5 +1,7 @@
 import os
 
+from django.db import transaction
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -7,6 +9,7 @@ from rest_framework import serializers
 from apps.contas.permissions import obter_perfil_usuario
 
 from .models import Autor, Avaliacao, Categoria, Editora, Emprestimo, Livro
+from .validators import detectar_formato_arquivo, validar_arquivo_digital, validar_isbn
 
 
 class CategoriaResumoSerializer(serializers.ModelSerializer):
@@ -336,3 +339,205 @@ class LivroDetailSerializer(LivroListSerializer):
         if avaliacao is None:
             return None
         return AvaliacaoSerializer(avaliacao).data
+
+
+class LivroGestaoSerializer(LivroListSerializer):
+    """Leitura completa de obras na gestão do acervo (inclui obras ocultas e empréstimos ativos)."""
+
+    cadastrado_por_nome = serializers.SerializerMethodField()
+    emprestimos_ativos = serializers.SerializerMethodField()
+
+    class Meta(LivroListSerializer.Meta):
+        fields = LivroListSerializer.Meta.fields + [
+            'sinopse',
+            'cadastrado_por_nome',
+            'emprestimos_ativos',
+            'atualizado_em',
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_cadastrado_por_nome(self, obj):
+        if obj.cadastrado_por is None:
+            return None
+        return obj.cadastrado_por.nome
+
+    @extend_schema_field(serializers.IntegerField)
+    def get_emprestimos_ativos(self, obj):
+        if hasattr(obj, 'emprestimos_ativos'):
+            return int(obj.emprestimos_ativos or 0)
+        return obj.emprestimos.filter(
+            status__in=[Emprestimo.STATUS_ATIVO, Emprestimo.STATUS_ATRASADO]
+        ).count()
+
+
+class LivroGestaoWriteSerializer(serializers.ModelSerializer):
+    """Cadastro e edição (multipart/form-data ou JSON) de obras pelo bibliotecário."""
+
+    autores = serializers.PrimaryKeyRelatedField(
+        queryset=Autor.objects.all(),
+        many=True,
+        required=False,
+    )
+    autores_nomes = serializers.ListField(
+        child=serializers.CharField(max_length=150),
+        required=False,
+        write_only=True,
+        help_text=_('Opcional: lista de nomes de autores para vincular/criar automaticamente.'),
+    )
+    isbn = serializers.CharField(
+        max_length=20,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[validar_isbn],
+    )
+    arquivo_pdf = serializers.FileField(
+        required=False,
+        allow_null=True,
+        validators=[validar_arquivo_digital],
+    )
+    quantidade_total = serializers.IntegerField(min_value=1, required=False, default=1)
+    quantidade_disponivel = serializers.IntegerField(min_value=0, required=False)
+
+    class Meta:
+        model = Livro
+        fields = [
+            'titulo',
+            'autores',
+            'autores_nomes',
+            'editora',
+            'categoria',
+            'isbn',
+            'ano_publicacao',
+            'sinopse',
+            'capa',
+            'arquivo_pdf',
+            'quantidade_total',
+            'quantidade_disponivel',
+            'dominio_publico',
+            'ativo',
+        ]
+
+    def validate_titulo(self, value):
+        titulo = value.strip()
+        if not titulo:
+            raise serializers.ValidationError(_('O título da obra é obrigatório.'))
+        return titulo
+
+    def validate_isbn(self, value):
+        if value is None:
+            return None
+        isbn_limpo = value.strip() or None
+        if isbn_limpo is not None:
+            qs = Livro.objects.filter(isbn=isbn_limpo)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(_('Já existe uma obra cadastrada com este ISBN.'))
+        return isbn_limpo
+
+    def validate_ano_publicacao(self, value):
+        ano_atual = timezone.localdate().year
+        if value > ano_atual + 1:
+            raise serializers.ValidationError(_('O ano de publicação não pode estar no futuro.'))
+        return value
+
+    def validate(self, attrs):
+        instance = self.instance
+        dominio_publico = attrs.get(
+            'dominio_publico',
+            instance.dominio_publico if instance is not None else False,
+        )
+        arquivo = attrs.get('arquivo_pdf', serializers.empty)
+
+        if arquivo is not serializers.empty and arquivo is not None:
+            formato_resolvido = detectar_formato_arquivo(arquivo)
+        elif instance is not None:
+            formato_resolvido = instance.formato
+        else:
+            formato_resolvido = Livro.FORMATO_PDF
+
+        if not dominio_publico and formato_resolvido == Livro.FORMATO_EPUB:
+            raise serializers.ValidationError({
+                'arquivo_pdf': _(
+                    'Obras em aluguel temporário devem estar em formato PDF para leitura no navegador.'
+                )
+            })
+
+        total = attrs.get(
+            'quantidade_total',
+            instance.quantidade_total if instance is not None else 1,
+        )
+        if 'quantidade_disponivel' in attrs:
+            disponivel = attrs['quantidade_disponivel']
+        elif instance is None:
+            disponivel = total
+            attrs['quantidade_disponivel'] = disponivel
+        elif 'quantidade_total' in attrs:
+            delta = total - instance.quantidade_total
+            disponivel = max(0, min(total, instance.quantidade_disponivel + delta))
+            attrs['quantidade_disponivel'] = disponivel
+        else:
+            disponivel = instance.quantidade_disponivel
+
+        if disponivel > total:
+            raise serializers.ValidationError({
+                'quantidade_disponivel': _(
+                    'A quantidade disponível não pode ser maior que o total de exemplares.'
+                )
+            })
+
+        return attrs
+
+    def _vincular_autores(self, livro, autores_ids, autores_nomes):
+        autores_finais = list(autores_ids) if autores_ids is not None else []
+        if autores_nomes is not None:
+            for nome_bruto in autores_nomes:
+                nome = nome_bruto.strip()
+                if not nome:
+                    continue
+                autor = Autor.objects.filter(nome__iexact=nome).first()
+                if autor is None:
+                    autor = Autor.objects.create(nome=nome)
+                if autor not in autores_finais:
+                    autores_finais.append(autor)
+
+        if autores_ids is not None or autores_nomes is not None:
+            livro.autores.set(autores_finais)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        autores_ids = validated_data.pop('autores', None)
+        autores_nomes = validated_data.pop('autores_nomes', None)
+
+        request = self.context.get('request')
+        perfil = obter_perfil_usuario(getattr(request, 'user', None)) if request else None
+        if perfil is not None:
+            validated_data['cadastrado_por'] = perfil
+
+        livro = Livro.objects.create(**validated_data)
+        self._vincular_autores(livro, autores_ids, autores_nomes)
+        return livro
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        autores_ids = validated_data.pop('autores', None)
+        autores_nomes = validated_data.pop('autores_nomes', None)
+
+        for campo, valor in validated_data.items():
+            setattr(instance, campo, valor)
+        instance.save()
+
+        self._vincular_autores(instance, autores_ids, autores_nomes)
+        return instance
+
+
+class GestaoResumoSerializer(serializers.Serializer):
+    total_obras = serializers.IntegerField()
+    obras_ativas = serializers.IntegerField()
+    emprestimos_ativos = serializers.IntegerField()
+    em_atraso = serializers.IntegerField()
+    total_leituras = serializers.IntegerField()
+    total_downloads = serializers.IntegerField()
+    total_alunos = serializers.IntegerField()

@@ -151,9 +151,9 @@ Todas as listagens usam `page_size=12` (ajustável via `?page_size=`, máximo `5
 > **Status Atual do Repositório (LEIA ANTES DE CODAR / USAR IA):**
 > - **Épico 1 (`T1.1` e `T1.2`) — ✅ CONCLUÍDO E VALIDADO NO DOCKER + POSTGRESQL:** Dependências pinadas em `requirements.txt`, `core/settings.py` (DRF, JWT, `AranduPagination`, CORS, `LocaleMiddleware`, e-mail dev/prod, `PRIVATE_MEDIA_ROOT`, `/api/schema/` e `/api/docs/`), app `apps/contas` (`Turma`, `PerfilUsuario`, `validators.py`), app `apps/arandu` (`Categoria`, `Autor`, `Editora`, `Livro`, `Emprestimo`, `Avaliacao`, `RegistroAcesso`, `storage.py`, `validators.py`) e migrações iniciais (`contas/0001_initial.py` e `arandu/0001_initial.py`) **já estão implementados e testados no container `web` + PostgreSQL**.
 > - **Épico 2 (`T2.1`, `T2.2` e `T2.3`) — ✅ CONCLUÍDO E VALIDADO NO DOCKER + POSTGRESQL:** Autenticação JWT por e-mail ou matrícula (`/api/auth/login/`, `/api/auth/refresh/`, `/api/auth/me/`), permissões `IsUsuarioAtivo` e `IsBibliotecario`, recuperação de senha (`/api/auth/esqueci-senha/`, `/api/auth/redefinir-senha/`), e-mails HTML com `humanize` (`reset_senha.html`, `boas_vindas_aluno.html`, `confirmacao_emprestimo.html`), gestão transacional ACID de alunos e turmas (`/api/gestao/alunos/`, `/api/gestao/turmas/`) e 19 testes automatizados (`apps/contas/tests.py`) passando 100%.
-> - **Épico 3 (`T3.1`) — ✅ IMPLEMENTADA *(rodar `migrate` + `test` no Docker)*:** Regra híbrida PDF/EPUB (`Livro.formato`, `validar_arquivo_digital`, migration `arandu/0002_livro_formato_e_arquivo_digital.py`), catálogo paginado sem N+1 (`GET /api/livros/`, `GET /api/livros/<uuid>/`), filtros (`categoria`, `dominio_publico`, `disponivel`, `formato`, `autor`, `editora`, `ano_publicacao`), avaliações (`GET/POST /api/livros/<uuid>/avaliacoes/`), auxiliares (`/api/categorias/`, `/api/autores/`, `/api/editoras/`) e testes em `apps/arandu/tests.py`.
+> - **Épico 3 (`T3.1` e `T3.2`) — ✅ CONCLUÍDAS E VALIDADAS NO DOCKER + POSTGRESQL:** Regra híbrida PDF/EPUB (`Livro.formato`, `validar_arquivo_digital`, migration `arandu/0002_livro_formato_e_arquivo_digital.py`), catálogo paginado sem N+1 (`GET /api/livros/`, `GET /api/livros/<uuid>/`), filtros (`categoria`, `dominio_publico`, `disponivel`, `formato`, `autor`, `editora`, `ano_publicacao`), avaliações (`GET/POST /api/livros/<uuid>/avaliacoes/`), auxiliares (`/api/categorias/`, `/api/autores/`, `/api/editoras/`), gestão do acervo (`GET/POST/PATCH /api/gestao/livros/` com upload `multipart/form-data` PDF/EPUB + capa) e resumo agregado em 1 consulta SQL (`GET /api/gestao/resumo/`).
 > - **Correções de DX incluídas:** `init-services-projetosd-web.sh` normalizado para LF com `.gitattributes` (`*.sh text eol=lf`) e `manage.py` sem travar em `debugpy.wait_for_client()` (ativável via `DEBUGPY_WAIT_FOR_CLIENT=1`).
-> - **NÃO recrie** esses arquivos, modelos ou migrações. Próximas tasks: **`T3.2`**, **`T3.3`**, **Épico 4** ou **Épico 5**.
+> - **NÃO recrie** esses arquivos, modelos ou migrações. Próximas tasks: **`T3.3`**, **Épico 4** ou **Épico 5**.
 > - **Ao subir o Docker localmente após puxar este commit (dentro de `backend/Arandu`):** rode `docker compose build web && docker compose up -d projetosd_db web && docker exec web python manage.py migrate`.
 
 ### Épico 1 — Fundação *(✅ CONCLUÍDO — desbloqueia o restante do time)*
@@ -225,13 +225,13 @@ Todas as listagens usam `page_size=12` (ajustável via `?page_size=`, máximo `5
   - [x] Suportar regra híbrida PDF/EPUB (`dominio_publico=True` aceita PDF/EPUB com download direto; `dominio_publico=False` aceita somente PDF).
 - **Critério de aceite:** Listagem paginada responde no envelope padrão, sem expor URL direta do arquivo privado, com suíte `apps/arandu/tests.py`.
 
-#### T3.2 — Gestão do Acervo, Upload de PDF e Resumo
+#### T3.2 — Gestão do Acervo, Upload de PDF/EPUB e Resumo — ✅ CONCLUÍDA
 - **Branch:** `feat/arandu-gestao-livros`
-- **Arquivos:** `apps/arandu/{serializers.py,views.py}`
+- **Arquivos:** `apps/arandu/{filters.py,serializers.py,views.py,urls.py,tests.py}`
 - **Escopo:**
-  - [ ] Implementar `GET/POST/PATCH /api/gestao/livros/` (`multipart/form-data`, permissão `IsBibliotecario`) preenchendo `cadastrado_por` automaticamente.
-  - [ ] Implementar `GET /api/gestao/resumo/` em 1 consulta agregada (`total_obras`, `emprestimos_ativos`, `em_atraso`, `total_leituras`).
-- **Critério de aceite:** Upload rejeita arquivo `.txt` renomeado para `.pdf` (magic bytes), aceita PDF válido em `private_media/` e permite ativar/ocultar obra via `PATCH`.
+  - [x] Implementar `GET/POST/PATCH /api/gestao/livros/` (`multipart/form-data` e JSON, permissão `IsBibliotecario`) preenchendo `cadastrado_por` automaticamente, aceitando `autores` (UUIDs) ou `autores_nomes` e aplicando a regra híbrida PDF/EPUB.
+  - [x] Implementar `GET /api/gestao/resumo/` em 1 consulta SQL agregada (`total_obras`, `obras_ativas`, `emprestimos_ativos`, `em_atraso`, `total_leituras`, `total_downloads`, `total_alunos`).
+- **Critério de aceite:** Upload rejeita `.txt` renomeado para `.pdf` (magic bytes `%PDF-`), rejeita `.epub` em aluguel temporário, aceita PDF/EPUB válido em `private_media/` e permite ativar/ocultar obra via `PATCH`.
 
 #### T3.3 — Integração com API Externa por ISBN *(Requisito Desejável)*
 - **Branch:** `feat/arandu-busca-isbn`

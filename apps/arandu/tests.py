@@ -524,3 +524,172 @@ class AuxiliaresCatalogoAPITests(CatalogoBaseMixin, APITestCase):
         r_cats = self.client.get(reverse('catalogo-categorias-list'), {'search': 'Matemática'})
         self.assertEqual(r_cats.status_code, status.HTTP_200_OK)
         self.assertEqual(r_cats.data['results'][0]['total_livros'], 1)
+
+
+class GestaoAcervoEResumoAPITests(CatalogoBaseMixin, APITestCase):
+    """Testes da T3.2 — Gestão do acervo (multipart PDF/EPUB), ativar/ocultar e /api/gestao/resumo/."""
+
+    def test_aluno_recebe_403_na_gestao_de_livros_e_resumo(self):
+        self.autenticar_como('2026-01001', self.aluno_password)
+
+        self.assertEqual(
+            self.client.get(reverse('gestao-livros-list')).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            self.client.post(reverse('gestao-livros-list'), {'titulo': 'Teste'}, format='json').status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            self.client.get(reverse('gestao-resumo')).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    def test_bibliotecario_lista_todas_as_obras_inclusive_ocultas_e_filtra_ativo(self):
+        self.autenticar_como('BIB-2026-10', self.bib_password)
+
+        resp_todas = self.client.get(reverse('gestao-livros-list'))
+        self.assertEqual(resp_todas.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp_todas.data['count'], 5)
+
+        resp_ocultas = self.client.get(reverse('gestao-livros-list'), {'ativo': 'false'})
+        self.assertEqual(resp_ocultas.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp_ocultas.data['count'], 1)
+        self.assertEqual(resp_ocultas.data['results'][0]['titulo'], 'Rascunho Interno')
+
+    def test_upload_multipart_pdf_valido_preenche_cadastrado_por_e_protege_url(self):
+        self.autenticar_como('BIB-2026-10', self.bib_password)
+
+        resp = self.client.post(
+            reverse('gestao-livros-list'),
+            {
+                'titulo': 'O Cortiço',
+                'categoria': str(self.cat_lit.id),
+                'editora': str(self.editora_escola.id),
+                'autores_nomes': ['Aluísio Azevedo'],
+                'ano_publicacao': 1890,
+                'sinopse': 'Romance naturalista brasileiro.',
+                'arquivo_pdf': _criar_pdf_valido('o-cortico.pdf'),
+                'quantidade_total': 4,
+                'dominio_publico': 'false',
+                'ativo': 'true',
+            },
+            format='multipart',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+        self.assertNotIn('arquivo_pdf', resp.data)
+        self.assertEqual(resp.data['formato'], Livro.FORMATO_PDF)
+        self.assertTrue(resp.data['possui_arquivo'])
+        self.assertEqual(resp.data['cadastrado_por_nome'], 'Prof. Carlos Mendes')
+        self.assertEqual(resp.data['quantidade_total'], 4)
+        self.assertEqual(resp.data['quantidade_disponivel'], 4)
+        self.assertEqual(resp.data['autores'][0]['nome'], 'Aluísio Azevedo')
+
+    def test_upload_txt_renomeado_para_pdf_eh_rejeitado_com_400(self):
+        self.autenticar_como('BIB-2026-10', self.bib_password)
+
+        falso_pdf = SimpleUploadedFile('falso.pdf', b'nao e um pdf valido', content_type='application/pdf')
+        resp = self.client.post(
+            reverse('gestao-livros-list'),
+            {
+                'titulo': 'Arquivo Malicioso',
+                'categoria': str(self.cat_lit.id),
+                'ano_publicacao': 2025,
+                'arquivo_pdf': falso_pdf,
+                'dominio_publico': 'false',
+            },
+            format='multipart',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('arquivo_pdf', resp.data)
+
+    def test_upload_epub_aceito_em_dominio_publico_e_rejeitado_em_aluguel(self):
+        self.autenticar_como('BIB-2026-10', self.bib_password)
+
+        # Em aluguel temporário (dominio_publico=False) → 400
+        resp_negado = self.client.post(
+            reverse('gestao-livros-list'),
+            {
+                'titulo': 'Aluguel EPUB Bloqueado',
+                'categoria': str(self.cat_lit.id),
+                'ano_publicacao': 2024,
+                'arquivo_pdf': _criar_epub_valido('aluguel.epub'),
+                'dominio_publico': 'false',
+            },
+            format='multipart',
+        )
+        self.assertEqual(resp_negado.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('arquivo_pdf', resp_negado.data)
+
+        # Em domínio público (dominio_publico=True) → 201
+        resp_ok = self.client.post(
+            reverse('gestao-livros-list'),
+            {
+                'titulo': 'Iracema',
+                'categoria': str(self.cat_lit.id),
+                'ano_publicacao': 1865,
+                'arquivo_pdf': _criar_epub_valido('iracema.epub'),
+                'dominio_publico': 'true',
+            },
+            format='multipart',
+        )
+        self.assertEqual(resp_ok.status_code, status.HTTP_201_CREATED, resp_ok.data)
+        self.assertEqual(resp_ok.data['formato'], Livro.FORMATO_EPUB)
+
+    def test_patch_ocultar_ativar_obra_e_ajustar_estoque(self):
+        self.autenticar_como('BIB-2026-10', self.bib_password)
+        url = reverse('gestao-livros-detail', args=[self.livro_aluguel.id])
+
+        # Ocultar obra via PATCH JSON
+        r_ocultar = self.client.patch(url, {'ativo': False}, format='json')
+        self.assertEqual(r_ocultar.status_code, status.HTTP_200_OK)
+        self.assertFalse(r_ocultar.data['ativo'])
+
+        # Aumentar quantidade_total de 3 -> 5 (disponível deve subir proporcionalmente de 2 -> 4)
+        r_estoque = self.client.patch(url, {'ativo': True, 'quantidade_total': 5}, format='json')
+        self.assertEqual(r_estoque.status_code, status.HTTP_200_OK)
+        self.assertTrue(r_estoque.data['ativo'])
+        self.assertEqual(r_estoque.data['quantidade_total'], 5)
+        self.assertEqual(r_estoque.data['quantidade_disponivel'], 4)
+
+    def test_resumo_agregado_retorna_metricas_em_uma_consulta_sql(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        Emprestimo.objects.create(
+            usuario=self.aluno_perfil,
+            livro=self.livro_aluguel,
+            data_prevista_devolucao=timezone.localdate() + timedelta(days=7),
+            status=Emprestimo.STATUS_ATIVO,
+        )
+        Emprestimo.objects.create(
+            usuario=self.outro_aluno_perfil,
+            livro=self.livro_esgotado,
+            data_prevista_devolucao=timezone.localdate() - timedelta(days=2),
+            status=Emprestimo.STATUS_ATRASADO,
+        )
+        RegistroAcesso.objects.create(
+            usuario=self.aluno_perfil,
+            livro=self.livro_aluguel,
+            tipo=RegistroAcesso.TIPO_LEITURA,
+        )
+        RegistroAcesso.objects.create(
+            usuario=self.aluno_perfil,
+            livro=self.livro_dp_pdf,
+            tipo=RegistroAcesso.TIPO_DOWNLOAD,
+        )
+
+        self.autenticar_como('BIB-2026-10', self.bib_password)
+        with CaptureQueriesContext(connection) as ctx:
+            resp = self.client.get(reverse('gestao-resumo'))
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data['total_obras'], 5)
+        self.assertEqual(resp.data['obras_ativas'], 4)
+        self.assertEqual(resp.data['emprestimos_ativos'], 1)
+        self.assertEqual(resp.data['em_atraso'], 1)
+        self.assertEqual(resp.data['total_leituras'], 1)
+        self.assertEqual(resp.data['total_downloads'], 1)
+        self.assertEqual(resp.data['total_alunos'], 2)
+        # 2 queries de auth (user + perfil) + 1 única query SQL agregada para todas as métricas
+        self.assertLessEqual(len(ctx), 3)

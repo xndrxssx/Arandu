@@ -70,3 +70,15 @@ class LivroFilter(django_filters.FilterSet):
         if value is False:
             return queryset.filter(dominio_publico=False, quantidade_disponivel=0)
         return queryset
+
+
+class LivroGestaoFilter(LivroFilter):
+    """Filtros de gestão do acervo (inclui filtro por obras ativas/ocultas)."""
+
+    ativo = django_filters.BooleanFilter(
+        field_name='ativo',
+        help_text='Filtra obras ativas (true) ou ocultas/rascunhos (false).',
+    )
+
+    class Meta(LivroFilter.Meta):
+        fields = LivroFilter.Meta.fields + ['ativo']
