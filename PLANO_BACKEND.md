@@ -22,6 +22,11 @@
    - **`dominio_publico = True`**: com empréstimo `ATIVO`, o aluno pode **Ler na Plataforma** (`/ler/`) e **Baixar o PDF** (`/download/`).
    - **`dominio_publico = False`**: download **bloqueado** (`403 Forbidden`); com empréstimo `ATIVO`, o aluno só pode **Ler na Plataforma** (`/ler/`).
 5. **Rotas sem mexer no Nginx**: todas as rotas da API ficam montadas sob `/api/...` em `core/urls.py`, funcionando tanto em `http://localhost:8080/api/...` quanto em `https://projetosd.local/api/...`.
+6. **Provisionamento Fechado de Usuários (sem autocadastro público)**:
+   - Por ser um sistema de uso interno escolar, **não existe cadastro público aberto**.
+   - **1º nível (Bootstrap na EC2):** `python manage.py createsuperuser` cria o Superusuário inicial (equipe técnica / direção).
+   - **2º nível (Professores / Bibliotecários):** cadastrados exclusivamente pelo Superusuário no **Django Admin customizado (`/admin/`)** em um único formulário (criando `User` + `PerfilUsuario(tipo='BIBLIOTECARIO')` atomicamente e enviando e-mail de boas-vindas / definição de senha).
+   - **3º nível (Alunos):** cadastrados pelos Bibliotecários/Professores diretamente pelo frontend React (`/gestao/alunos` → `POST /api/gestao/alunos/`).
 
 ---
 
@@ -271,11 +276,12 @@ Todas as listagens usam `page_size=12` (ajustável via `?page_size=`, máximo `5
 
 #### T5.1 — Django Admin Avançado (`fieldsets`, `inlines`, `messages`)
 - **Branch:** `feat/admin-customizado`
-- **Arquivos:** `apps/contas/admin.py`, `apps/arandu/admin.py`
+- **Arquivos:** `apps/contas/{admin.py,services.py}`, `apps/arandu/admin.py`
 - **Escopo:**
   - [ ] Registrar todos os **9 modelos** com `fieldsets` organizados, `TabularInline`, `list_display`, `list_filter`, `search_fields` e `autocomplete_fields`.
+  - [ ] Customizar `PerfilUsuarioAdmin` em `apps/contas/admin.py` para permitir cadastrar novos **Bibliotecários/Professores** (e alunos, se necessário) em **um único formulário** (criando `User` + `PerfilUsuario` atomicamente via `services.py`, gerando senha temporária ou enviando link de definição de senha por e-mail em `on_commit` e notificando via `django.contrib.messages`).
   - [ ] Criar actions customizadas (ex.: *"Marcar empréstimos selecionados como devolvidos"* chamando `devolver_emprestimo` ACID e exibindo feedback via `django.contrib.messages`).
-- **Critério de aceite:** Todos os 9 modelos gerenciáveis em `/admin/` preservando integridade de estoque.
+- **Critério de aceite:** Todos os 9 modelos gerenciáveis em `/admin/` preservando integridade de estoque, e o Superusuário consegue provisionar um novo Bibliotecário/Professor em um único passo.
 
 #### T5.2 — Comando Faker (`python manage.py popular_banco`)
 - **Branch:** `feat/comando-faker`
@@ -312,29 +318,51 @@ Todas as listagens usam `page_size=12` (ajustável via `?page_size=`, máximo `5
 
 ## 7. Topologia de Deploy na AWS (Produção)
 
+Adotamos a estratégia de **subdomínios separados** (zero conflito entre rotas do React e do Django Admin):
+
 ```mermaid
 flowchart LR
-    U["Aluno / Professor"]
-    CF["CloudFront (HTTPS + SPA)\nou Amplify"]
+    U["Aluno / Professor / Superusuário"]
+    DNS["DNS (arandu.com.br)"]
+    CF["CloudFront (HTTPS via AWS ACM + SPA)\narandu.com.br / www.arandu.com.br"]
     S3FE["Bucket S3 #1\nFrontend React/Vite (dist/)"]
-    EC2["EC2 (Scaffold do Professor)\nNginx + SSL -> Django API + PostgreSQL"]
+    EC2["EC2 (Scaffold do Professor)\nNginx + SSL (Let's Encrypt)\napi.arandu.com.br -> Django API + /admin/\nadm.arandu.com.br -> pgAdmin\n+ PostgreSQL"]
     S3PDF["Bucket S3 #2 (PRIVADO)\nPDFs e Capas do Acervo"]
 
-    U -->|"HTTPS"| CF --> S3FE
-    U -->|"HTTPS /api/* + JWT"| EC2
+    U --> DNS
+    DNS -->|"arandu.com.br\nwww.arandu.com.br"| CF --> S3FE
+    DNS -->|"api.arandu.com.br\nadm.arandu.com.br"| EC2
+    CF -.->|"HTTPS /api/* + JWT"| EC2
     EC2 -->|"boto3 / IAM Role\n(Upload / Stream / Presigned URL)"| S3PDF
 ```
 
-### Boas práticas para o deploy na AWS
+### Mapa de URLs em Produção (exemplo com `arandu.com.br`)
+
+| Endereço | Destino no DNS | Responsável pelo HTTPS | Conteúdo servido |
+|---|---|---|---|
+| `https://arandu.com.br` e `https://www.arandu.com.br` | CloudFront → Bucket S3 #1 | **AWS ACM** (gratuito, automático) | Frontend React (Landing, Login, Catálogo, Leitor PDF, `/gestao/*` do Bibliotecário) |
+| `https://api.arandu.com.br/api/...` | IP público da EC2 | **Pasta `ssl/`** (Let's Encrypt, automático) | Endpoints JSON da API REST + Swagger (`/api/docs/`) |
+| `https://api.arandu.com.br/admin/` | IP público da EC2 | **Pasta `ssl/`** (Let's Encrypt, automático) | **Django Admin** (usado pelo Superusuário para cadastrar Professores/Bibliotecários e manutenção; estáticos servidos via WhiteNoise) |
+| `https://adm.arandu.com.br` | IP público da EC2 | **Pasta `ssl/`** (Let's Encrypt, automático) | pgAdmin 4 *(opcional em produção)* |
+
+### Boas práticas e cuidados para o deploy na AWS
 1. **Dois buckets S3 separados**:
    - **Bucket 1 (Frontend)**: recebe o build estático (`dist/`) do React + Vite.
    - **Bucket 2 (Acervo/PDFs)**: configurado com **Block all public access** ativado (100% privado), impedindo download direto pela URL do S3 e garantindo que a regra de empréstimo `ATIVO` e `dominio_publico` continue sendo aplicada pela API Django.
-2. **HTTPS e SPA no Frontend (CloudFront ou Amplify)**:
-   - O S3 Static Website puro serve apenas em HTTP e devolve `404` em recarregamentos de rotas do React Router. Colocar **CloudFront** na frente do bucket do frontend (ou usar Amplify) garante HTTPS e fallback `403/404 → /index.html (200)`.
-3. **API + PostgreSQL na EC2**:
+2. **Divisão de Certificados SSL (ACM vs. pasta `ssl/` da EC2)**:
+   - A pasta `ssl/` do backend usa Let's Encrypt via desafio HTTP-01 e resolve o HTTPS de **tudo que aponta para a EC2** (`api.arandu.com.br`, `adm.arandu.com.br`), mas não alcança o S3/CloudFront.
+   - No dia do deploy na EC2, o container `ssl` deve emitir certificado **apenas** para os subdomínios apontados para a EC2 (não incluir `www.arandu.com.br`, que fica sob responsabilidade do **AWS ACM** no CloudFront).
+3. **HTTPS e SPA no Frontend (CloudFront ou Amplify)**:
+   - O S3 Static Website puro serve apenas em HTTP e devolve `404` em recarregamentos de rotas do React Router. Colocar **CloudFront** na frente do bucket do frontend (ou usar Amplify) garante HTTPS gratuito (via ACM) e fallback `403/404 → /index.html (200)`.
+4. **Variáveis de ambiente do Django em Produção**:
+   - `ALLOWED_HOSTS = ['api.arandu.com.br']`
+   - `CSRF_TRUSTED_ORIGINS = ['https://api.arandu.com.br']`
+   - `CORS_ALLOWED_ORIGINS = ['https://arandu.com.br', 'https://www.arandu.com.br']`
+   - `FRONTEND_URL = 'https://www.arandu.com.br'` *(usada nos links de e-mail como `/redefinir-senha?uid=...&token=...`)*
+5. **API + PostgreSQL na EC2**:
    - Mantém integralmente o scaffold Docker do professor (`postgres`, `pgadmin`, `web`, `proxy`, `ssl`) e os scripts `infra/pg` de backup/restore.
    - **Atenção à RAM**: em instâncias `t2.micro`/`t3.micro` (1 GB RAM), criar **2 GB de swap** no Linux antes de rodar `docker compose build` (ou usar `t3.small` com 2 GB RAM).
-4. **Migração transparente de disco local → S3 no Django**:
+6. **Migração transparente de disco local → S3 no Django**:
    - Com o storage abstraído em `apps/arandu/storage.py`, em dev salvamos em `private_media/`/`media/` no disco; em produção na EC2 plugamos `django-storages` + `boto3` (preferencialmente via **IAM Role** da EC2, sem chaves AWS em código/repo), sem alterar `models.py` nem os serviços ACID.
 
 ---
